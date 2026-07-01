@@ -62,6 +62,10 @@ app.get("/search", async (req, res) => {
     })
 });
 
+function estimateFilesize(durationSeconds, bitrateKbps = 128) {
+    return Math.round((durationSeconds * bitrateKbps * 1000) / 8);
+}
+
 app.post("/extract", async (req, res) => {
     try {
         const url = req.body.url;
@@ -76,12 +80,18 @@ app.post("/extract", async (req, res) => {
 
         if (!video) return res.status(404).json({ error: "Video not found" });
 
+        const isoDuration = video.contentDetails.duration;
+        const match = isoDuration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+        const totalSeconds = match
+            ? (parseInt(match[1] || "0", 10) * 3600) + (parseInt(match[2] || "0", 10) * 60) + parseInt(match[3] || "0", 10)
+            : 0;
+
         res.json({
             id: videoId,
             title: video.snippet.title,
             channel: video.snippet.channelTitle,
-            duration: parseISO8601Duration(video.contentDetails.duration),
-            filesize: null
+            duration: parseISO8601Duration(isoDuration),
+            filesize: estimateFilesize(totalSeconds)
         });
     } catch (error) {
         console.error("Extract Error:", error);
@@ -94,6 +104,7 @@ app.get("/extract/:id", async (req, res) => {
     const process = youtubedl.exec(url, {
         extractAudio: true,
         audioFormat: "mp3",
+        audioQuality: "128K",
         output: "-",
         cookies: cookiesPath,
         ffmpegLocation: ffmpeg.path,
@@ -104,6 +115,7 @@ app.get("/extract/:id", async (req, res) => {
     res.setHeader("Content-Type", "audio/mpeg");
     process.stdout.pipe(res);
 })
+
 
 app.listen(8080, () => {
     console.log("App listening on port 8080")

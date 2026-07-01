@@ -4,6 +4,9 @@ require('dotenv').config()
 const youtubedl = require('youtube-dl-exec')
 const path = require('path');
 const ffmpeg = require('@ffmpeg-installer/ffmpeg');
+const fs = require('fs');
+const cacheDir = path.join(__dirname, 'tmp');
+if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir);
 
 const cookiesPath = path.join(__dirname, 'cookies.txt');
 
@@ -67,12 +70,14 @@ app.post("/extract", async (req, res) => {
         const url = req.body.url;
         const info = await youtubedl(url, {
             dumpSingleJson: true,
+            writeInfoJson: true,
+            skipDownload: true,
+            output: path.join(cacheDir, '%(id)s.%(ext)s'),
             cookies: cookiesPath,
             extractorArgs: 'youtube:player-client=web;player-skip=web_safari,tv_downgraded',
             jsRuntimes: 'deno:/opt/render/project/.deno/bin/deno',
             remoteComponents: 'ejs:github'
         });
-
         res.json({
             id: info.id,
             title: info.title,
@@ -88,20 +93,22 @@ app.post("/extract", async (req, res) => {
 
 app.get("/extract/:id", async (req, res) => {
     const url = `https://youtube.com/watch?v=${req.params.id}`;
+    const infoJsonPath = path.join(cacheDir, `${req.params.id}.info.json`);
 
     const process = youtubedl.exec(url, {
+        loadInfoJson: infoJsonPath,
         extractAudio: true,
         audioFormat: "mp3",
         output: "-",
-        cookies: cookiesPath,
-        ffmpegLocation: ffmpeg.path,
-        extractorArgs: 'youtube:player-client=web;player-skip=web_safari,tv_downgraded',
-        jsRuntimes: 'deno:/opt/render/project/.deno/bin/deno',
-        remoteComponents: 'ejs:github'
+        ffmpegLocation: ffmpeg.path
     });
 
     res.setHeader("Content-Type", "audio/mpeg");
     process.stdout.pipe(res);
+
+    res.on("finish", () => {
+        fs.unlink(infoJsonPath, () => {});
+    });
 })
 
 app.listen(8080, () => {

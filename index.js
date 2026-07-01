@@ -2,6 +2,17 @@ const express = require("express");
 const cors = require("cors");
 require('dotenv').config()
 const youtubedl = require('youtube-dl-exec')
+const fs = require('fs');
+const path = require('path');
+
+// Generate the Netscape cookies file dynamically on Render
+const cookiesPath = path.join(__dirname, 'cookies.txt');
+if (process.env.YT_COOKIES) {
+    fs.writeFileSync(cookiesPath, process.env.YT_COOKIES, 'utf-8');
+    console.log("Netscape cookies file generated.");
+} else {
+    console.warn("Warning: YT_COOKIES environment variable is missing.");
+}
 
 const app = express();
 app.use(express.json());
@@ -13,7 +24,7 @@ app.use(cors({
 
 function parseISO8601Duration(duration) {
     const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-        if (!match) return null;
+    if (!match) return null;
     const hours = parseInt(match[1] || "0", 10);
     const minutes = parseInt(match[2] || "0", 10);
     const seconds = parseInt(match[3] || "0", 10);
@@ -59,19 +70,21 @@ app.get("/search", async (req, res) => {
 });
 
 app.post("/extract", async (req, res) => {
-    const url = req.body.url;
+    try {
+        const url = req.body.url;
+        const info = await youtubedl(url, { dumpSingleJson: true, cookies: cookiesPath });
 
-    const info = await youtubedl(url, {
-        dumpSingleJson: true
-    });
-
-    res.json({
-        id: info.id,
-        title: info.title,
-        duration: info.duration_string,
-        channel: info.channel,
-        filesize: info.filesize || info.filesize_approx
-    });
+        res.json({
+            id: info.id,
+            title: info.title,
+            duration: info.duration_string,
+            channel: info.channel,
+            filesize: info.filesize || info.filesize_approx
+        });
+    } catch (error) {
+        console.error("Extract Error:", error);
+        res.status(500).json({ error: "Failed to extract video details" });
+    }
 });
 
 app.get("/extract/:id", async (req, res) => {
@@ -80,7 +93,8 @@ app.get("/extract/:id", async (req, res) => {
     const process = youtubedl.exec(url, {
         extractAudio: true,
         audioFormat: "mp3",
-        output: "-"
+        output: "-",
+        cookies: cookiesPath
     });
 
     res.setHeader("Content-Type", "audio/mpeg");

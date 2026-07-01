@@ -65,7 +65,13 @@ app.get("/search", async (req, res) => {
 app.post("/extract", async (req, res) => {
     try {
         const url = req.body.url;
-        const info = await youtubedl(url, { dumpSingleJson: true, cookies: cookiesPath, extractorArgs: 'youtube:player-client=web;player-skip=web_safari,tv_downgraded' });
+        const info = await youtubedl(url, {
+            dumpSingleJson: true,
+            cookies: cookiesPath,
+            extractorArgs: 'youtube:player-client=web;player-skip=web_safari,tv_downgraded',
+            jsRuntimes: 'deno:/opt/render/project/.deno/bin/deno',
+            remoteComponents: 'ejs:github'
+        });
 
         res.json({
             id: info.id,
@@ -89,7 +95,9 @@ app.get("/extract/:id", async (req, res) => {
         output: "-",
         cookies: cookiesPath,
         ffmpegLocation: ffmpeg.path,
-        extractorArgs: 'youtube:player-client=web;player-skip=web_safari,tv_downgraded'
+        extractorArgs: 'youtube:player-client=web;player-skip=web_safari,tv_downgraded',
+        jsRuntimes: 'deno:/opt/render/project/.deno/bin/deno',
+        remoteComponents: 'ejs:github'
     });
 
     res.setHeader("Content-Type", "audio/mpeg");

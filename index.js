@@ -65,7 +65,7 @@ app.get("/search", async (req, res) => {
 app.post("/extract", async (req, res) => {
     try {
         const url = req.body.url;
-        const info = await youtubedl(url, { dumpSingleJson: true, cookies: cookiesPath });
+        const info = await youtubedl(url, { dumpSingleJson: true, cookies: cookiesPath, extractorArgs: 'youtube:player-client=web;player-skip=web_safari,tv_downgraded' });
 
         res.json({
             id: info.id,
@@ -88,7 +88,8 @@ app.get("/extract/:id", async (req, res) => {
         audioFormat: "mp3",
         output: "-",
         cookies: cookiesPath,
-        ffmpegLocation: ffmpeg.path
+        ffmpegLocation: ffmpeg.path,
+        extractorArgs: 'youtube:player-client=web;player-skip=web_safari,tv_downgraded'
     });
 
     res.setHeader("Content-Type", "audio/mpeg");

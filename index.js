@@ -4,9 +4,6 @@ require('dotenv').config()
 const youtubedl = require('youtube-dl-exec')
 const path = require('path');
 const ffmpeg = require('@ffmpeg-installer/ffmpeg');
-const fs = require('fs');
-const cacheDir = path.join(__dirname, 'tmp');
-if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir);
 
 const cookiesPath = path.join(__dirname, 'cookies.txt');
 
@@ -68,47 +65,44 @@ app.get("/search", async (req, res) => {
 app.post("/extract", async (req, res) => {
     try {
         const url = req.body.url;
-        const info = await youtubedl(url, {
-            dumpSingleJson: true,
-            writeInfoJson: true,
-            skipDownload: true,
-            output: path.join(cacheDir, '%(id)s.%(ext)s'),
-            cookies: cookiesPath,
-            extractorArgs: 'youtube:player-client=web;player-skip=web_safari,tv_downgraded',
-            jsRuntimes: 'deno:/opt/render/project/.deno/bin/deno',
-            remoteComponents: 'ejs:github'
-        });
+        const videoId = new URL(url).searchParams.get("v");
+        if (!videoId) return res.status(400).json({ error: "Invalid video URL" });
+
+        const detailsRes = await fetch(
+            `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id=${videoId}&key=${process.env.API_KEY}`
+        );
+        const detailsData = await detailsRes.json();
+        const video = detailsData.items?.[0];
+
+        if (!video) return res.status(404).json({ error: "Video not found" });
+
         res.json({
-            id: info.id,
-            title: info.title,
-            duration: info.duration_string,
-            channel: info.channel,
-            filesize: info.filesize || info.filesize_approx
+            id: videoId,
+            title: video.snippet.title,
+            channel: video.snippet.channelTitle,
+            duration: parseISO8601Duration(video.contentDetails.duration),
+            filesize: null
         });
     } catch (error) {
         console.error("Extract Error:", error);
-        res.status(500).json({ error: "Failed to extract video details" });
+        res.status(500).json({ error: "Failed to fetch video details" });
     }
 });
 
 app.get("/extract/:id", async (req, res) => {
     const url = `https://youtube.com/watch?v=${req.params.id}`;
-    const infoJsonPath = path.join(cacheDir, `${req.params.id}.info.json`);
-
     const process = youtubedl.exec(url, {
-        loadInfoJson: infoJsonPath,
         extractAudio: true,
         audioFormat: "mp3",
         output: "-",
-        ffmpegLocation: ffmpeg.path
+        cookies: cookiesPath,
+        ffmpegLocation: ffmpeg.path,
+        extractorArgs: 'youtube:player-client=web;player-skip=web_safari,tv_downgraded',
+        jsRuntimes: 'deno:/opt/render/project/.deno/bin/deno',
+        remoteComponents: 'ejs:github'
     });
-
     res.setHeader("Content-Type", "audio/mpeg");
     process.stdout.pipe(res);
-
-    res.on("finish", () => {
-        fs.unlink(infoJsonPath, () => {});
-    });
 })
 
 app.listen(8080, () => {

@@ -11,7 +11,8 @@ const app = express();
 app.use(express.json());
 
 app.use(cors({
-    origin: 'https://xsky13.github.io',
+	// origin: 'https://xsky13.github.io',
+    origin: 'http://localhost:5173',
     optionsSuccessStatus: 200
 }));
 
@@ -99,6 +100,8 @@ app.post("/extract", async (req, res) => {
     }
 });
 
+const jsRuntimePath = process.env.DENO_PATH || 'deno';
+
 app.get("/extract/:id", async (req, res) => {
     const url = `https://youtube.com/watch?v=${req.params.id}`;
     const process = youtubedl.exec(url, {
@@ -109,7 +112,7 @@ app.get("/extract/:id", async (req, res) => {
         cookies: cookiesPath,
         ffmpegLocation: ffmpeg.path,
         extractorArgs: 'youtube:player-client=web;player-skip=web_safari,tv_downgraded',
-        jsRuntimes: 'deno:/opt/render/project/.deno/bin/deno',
+        jsRuntimes: `deno:${jsRuntimePath}`,
         remoteComponents: 'ejs:github'
     });
     res.setHeader("Content-Type", "audio/mpeg");

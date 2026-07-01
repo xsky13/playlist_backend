@@ -2,8 +2,8 @@ const express = require("express");
 const cors = require("cors");
 require('dotenv').config()
 const youtubedl = require('youtube-dl-exec')
-const fs = require('fs');
 const path = require('path');
+const ffmpeg = require('@ffmpeg-installer/ffmpeg');
 
 const cookiesPath = path.join(__dirname, 'cookies.txt');
 
@@ -87,7 +87,8 @@ app.get("/extract/:id", async (req, res) => {
         extractAudio: true,
         audioFormat: "mp3",
         output: "-",
-        cookies: cookiesPath
+        cookies: cookiesPath,
+        ffmpegLocation: ffmpeg.path
     });
 
     res.setHeader("Content-Type", "audio/mpeg");

@@ -5,14 +5,7 @@ const youtubedl = require('youtube-dl-exec')
 const fs = require('fs');
 const path = require('path');
 
-// Generate the Netscape cookies file dynamically on Render
 const cookiesPath = path.join(__dirname, 'cookies.txt');
-if (process.env.YT_COOKIES) {
-    fs.writeFileSync(cookiesPath, process.env.YT_COOKIES, 'utf-8');
-    console.log("Netscape cookies file generated.");
-} else {
-    console.warn("Warning: YT_COOKIES environment variable is missing.");
-}
 
 const app = express();
 app.use(express.json());

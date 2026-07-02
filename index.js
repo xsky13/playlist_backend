@@ -125,10 +125,10 @@ app.get("/extract/:id", async (req, res) => {
 	const url = `https://youtube.com/watch?v=${req.params.id}`;
 
 	const ytdlp = youtubedl.exec(url, {
-		format: 'bestaudio',
+		format: 'bestaudio/best',
 		output: '-',
 		cookies: cookiesPath,
-		extractorArgs: 'youtube:player-client=web;player-skip=web_safari,tv_downgraded',
+		extractorArgs: 'youtube:player-client=web,android',
 		jsRuntimes: `deno:${jsRuntimePath}`,
 		remoteComponents: 'ejs:github'
 	});

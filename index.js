@@ -12,114 +12,170 @@ app.use(express.json());
 
 app.use(cors({
 	origin: 'https://xsky13.github.io',
-    // origin: 'http://localhost:5173',
-    optionsSuccessStatus: 200
+	// origin: 'http://localhost:5173',
+	optionsSuccessStatus: 200
 }));
 
 function parseISO8601Duration(duration) {
-    const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-    if (!match) return null;
-    const hours = parseInt(match[1] || "0", 10);
-    const minutes = parseInt(match[2] || "0", 10);
-    const seconds = parseInt(match[3] || "0", 10);
+	const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+	if (!match) return null;
+	const hours = parseInt(match[1] || "0", 10);
+	const minutes = parseInt(match[2] || "0", 10);
+	const seconds = parseInt(match[3] || "0", 10);
 
-    const totalSeconds = hours * 3600 + minutes * 60 + seconds;
-    const mm = Math.floor(totalSeconds / 60);
-    const ss = String(totalSeconds % 60).padStart(2, "0");
-    return hours > 0
-        ? `${hours}:${String(mm % 60).padStart(2, "0")}:${ss}`
-        : `${mm}:${ss}`;
+	const totalSeconds = hours * 3600 + minutes * 60 + seconds;
+	const mm = Math.floor(totalSeconds / 60);
+	const ss = String(totalSeconds % 60).padStart(2, "0");
+	return hours > 0
+		? `${hours}:${String(mm % 60).padStart(2, "0")}:${ss}`
+		: `${mm}:${ss}`;
 }
 
 app.get("/search", async (req, res) => {
-    const searchResults = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=10&q=${req.query.term}&key=${process.env.API_KEY}`)
-    const searchData = await searchResults.json();
+	const searchResults = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=10&q=${req.query.term}&key=${process.env.API_KEY}`)
+	const searchData = await searchResults.json();
 
-    const videoIds = searchData.items
-        .map(item => item.id.videoId)
-        .filter(Boolean)
-        .join(",");
+	const videoIds = searchData.items
+		.map(item => item.id.videoId)
+		.filter(Boolean)
+		.join(",");
 
-    if (!videoIds) return res.json({ results: [] });
+	if (!videoIds) return res.json({ results: [] });
 
-    const detailsResults = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${videoIds}&key=${process.env.API_KEY}`)
-    const detailsData = await detailsResults.json();
+	const detailsResults = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${videoIds}&key=${process.env.API_KEY}`)
+	const detailsData = await detailsResults.json();
 
-    const durationById = {};
-    detailsData.items.forEach(item => {
-        durationById[item.id] = parseISO8601Duration(item.contentDetails.duration);
-    });
+	const durationById = {};
+	detailsData.items.forEach(item => {
+		durationById[item.id] = parseISO8601Duration(item.contentDetails.duration);
+	});
 
-    const results = searchData.items.map(item => ({
-        id: item.id.videoId,
-        title: item.snippet.title,
-        channel: item.snippet.channelTitle,
-        thumbnail: item.snippet.thumbnails?.default?.url,
-        duration: durationById[item.id.videoId] ?? null
-    }));
+	const results = searchData.items.map(item => ({
+		id: item.id.videoId,
+		title: item.snippet.title,
+		channel: item.snippet.channelTitle,
+		thumbnail: item.snippet.thumbnails?.default?.url,
+		duration: durationById[item.id.videoId] ?? null
+	}));
 
-    res.json({
-        results
-    })
+	res.json({
+		results
+	})
 });
 
 function estimateFilesize(durationSeconds, bitrateKbps = 128) {
-    return Math.round((durationSeconds * bitrateKbps * 1000) / 8);
+	return Math.round((durationSeconds * bitrateKbps * 1000) / 8);
 }
 
 app.post("/extract", async (req, res) => {
-    try {
-        const url = req.body.url;
-        const videoId = new URL(url).searchParams.get("v");
-        if (!videoId) return res.status(400).json({ error: "Invalid video URL" });
+	try {
+		const url = req.body.url;
+		const videoId = new URL(url).searchParams.get("v");
+		if (!videoId) return res.status(400).json({ error: "Invalid video URL" });
 
-        const detailsRes = await fetch(
-            `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id=${videoId}&key=${process.env.API_KEY}`
-        );
-        const detailsData = await detailsRes.json();
-        const video = detailsData.items?.[0];
+		const detailsRes = await fetch(
+			`https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id=${videoId}&key=${process.env.API_KEY}`
+		);
+		const detailsData = await detailsRes.json();
+		const video = detailsData.items?.[0];
 
-        if (!video) return res.status(404).json({ error: "Video not found" });
+		if (!video) return res.status(404).json({ error: "Video not found" });
 
-        const isoDuration = video.contentDetails.duration;
-        const match = isoDuration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-        const totalSeconds = match
-            ? (parseInt(match[1] || "0", 10) * 3600) + (parseInt(match[2] || "0", 10) * 60) + parseInt(match[3] || "0", 10)
-            : 0;
+		const isoDuration = video.contentDetails.duration;
+		const match = isoDuration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+		const totalSeconds = match
+			? (parseInt(match[1] || "0", 10) * 3600) + (parseInt(match[2] || "0", 10) * 60) + parseInt(match[3] || "0", 10)
+			: 0;
 
-        res.json({
-            id: videoId,
-            title: video.snippet.title,
-            channel: video.snippet.channelTitle,
-            duration: parseISO8601Duration(isoDuration),
-            filesize: estimateFilesize(totalSeconds)
-        });
-    } catch (error) {
-        console.error("Extract Error:", error);
-        res.status(500).json({ error: "Failed to fetch video details" });
-    }
+		res.json({
+			id: videoId,
+			title: video.snippet.title,
+			channel: video.snippet.channelTitle,
+			duration: parseISO8601Duration(isoDuration),
+			filesize: estimateFilesize(totalSeconds)
+		});
+	} catch (error) {
+		console.error("Extract Error:", error);
+		res.status(500).json({ error: "Failed to fetch video details" });
+	}
 });
 
 const jsRuntimePath = process.env.DENO_PATH || 'deno';
 
+// app.get("/extract/:id", async (req, res) => {
+//     const url = `https://youtube.com/watch?v=${req.params.id}`;
+//     const process = youtubedl.exec(url, {
+//         extractAudio: true,
+//         audioFormat: "mp3",
+//         audioQuality: "128K",
+//         output: "-",
+//         cookies: cookiesPath,
+//         ffmpegLocation: ffmpeg.path,
+//         extractorArgs: 'youtube:player-client=web;player-skip=web_safari,tv_downgraded',
+//         jsRuntimes: `deno:${jsRuntimePath}`,
+//         remoteComponents: 'ejs:github'
+//     });
+//     res.setHeader("Content-Type", "audio/mpeg");
+//     process.stdout.pipe(res);
+// })
+//
+
 app.get("/extract/:id", async (req, res) => {
-    const url = `https://youtube.com/watch?v=${req.params.id}`;
-    const process = youtubedl.exec(url, {
-        extractAudio: true,
-        audioFormat: "mp3",
-        audioQuality: "128K",
-        output: "-",
-        cookies: cookiesPath,
-        ffmpegLocation: ffmpeg.path,
-        extractorArgs: 'youtube:player-client=web;player-skip=web_safari,tv_downgraded',
-        jsRuntimes: `deno:${jsRuntimePath}`,
-        remoteComponents: 'ejs:github'
-    });
-    res.setHeader("Content-Type", "audio/mpeg");
-    process.stdout.pipe(res);
-})
+	const url = `https://youtube.com/watch?v=${req.params.id}`;
+
+	const ytdlp = youtubedl.exec(url, {
+		format: 'bestaudio',
+		output: '-',
+		cookies: cookiesPath,
+		extractorArgs: 'youtube:player-client=web;player-skip=web_safari,tv_downgraded',
+		jsRuntimes: `deno:${jsRuntimePath}`,
+		remoteComponents: 'ejs:github'
+	});
+
+	const ffmpegProcess = spawn(ffmpeg.path, [
+		'-i', 'pipe:0',
+		'-vn',
+		'-acodec', 'libmp3lame',
+		'-b:a', '128k',
+		'-f', 'mp3',
+		'pipe:1'
+	]);
+
+	let headersSent = false;
+
+	ytdlp.stdout.pipe(ffmpegProcess.stdin);
+
+	ffmpegProcess.stdout.once('data', () => {
+		if (!headersSent) {
+			res.setHeader('Content-Type', 'audio/mpeg');
+			headersSent = true;
+		}
+	});
+	ffmpegProcess.stdout.pipe(res);
+
+	let ytdlpStderr = '';
+	let ffmpegStderr = '';
+	ytdlp.stderr.on('data', (c) => { ytdlpStderr += c.toString(); });
+	ffmpegProcess.stderr.on('data', (c) => { ffmpegStderr += c.toString(); });
+
+	const failIfNoHeaders = (source, message) => {
+		console.error(`${source} failed for ${req.params.id}:`, message);
+		if (!headersSent && !res.headersSent) {
+			res.status(502).json({ error: "Failed to extract audio, try again" });
+		}
+	};
+
+	ytdlp.on('exit', (code) => {
+		if (code !== 0) failIfNoHeaders('yt-dlp', ytdlpStderr);
+	});
+	ffmpegProcess.on('exit', (code) => {
+		if (code !== 0) failIfNoHeaders('ffmpeg', ffmpegStderr);
+	});
+	ytdlp.on('error', (err) => failIfNoHeaders('yt-dlp', err));
+	ffmpegProcess.on('error', (err) => failIfNoHeaders('ffmpeg', err));
+});
 
 
 app.listen(8080, () => {
-    console.log("App listening on port 8080")
+	console.log("App listening on port 8080")
 })

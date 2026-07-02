@@ -4,6 +4,7 @@ require('dotenv').config()
 const youtubedl = require('youtube-dl-exec')
 const path = require('path');
 const ffmpeg = require('@ffmpeg-installer/ffmpeg');
+const { spawn } = require('child_process');
 
 const cookiesPath = path.join(__dirname, 'cookies.txt');
 

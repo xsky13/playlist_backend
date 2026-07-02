@@ -121,61 +121,119 @@ const jsRuntimePath = process.env.DENO_PATH || 'deno';
 // })
 //
 
+// app.get("/extract/:id", async (req, res) => {
+// 	const url = `https://youtube.com/watch?v=${req.params.id}`;
+
+// 	const ytdlp = youtubedl.exec(url, {
+// 		format: 'bestaudio/best',
+// 		output: '-',
+// 		cookies: cookiesPath,
+// 		extractorArgs: 'youtube:player-client=web,android',
+// 		jsRuntimes: `deno:${jsRuntimePath}`,
+// 		remoteComponents: 'ejs:github'
+// 	});
+
+// 	const ffmpegProcess = spawn(ffmpeg.path, [
+// 		'-i', 'pipe:0',
+// 		'-vn',
+// 		'-acodec', 'libmp3lame',
+// 		'-b:a', '128k',
+// 		'-f', 'mp3',
+// 		'pipe:1'
+// 	]);
+
+// 	let headersSent = false;
+
+// 	ytdlp.stdout.pipe(ffmpegProcess.stdin);
+
+// 	ffmpegProcess.stdout.once('data', () => {
+// 		if (!headersSent) {
+// 			res.setHeader('Content-Type', 'audio/mpeg');
+// 			headersSent = true;
+// 		}
+// 	});
+// 	ffmpegProcess.stdout.pipe(res);
+
+// 	let ytdlpStderr = '';
+// 	let ffmpegStderr = '';
+// 	ytdlp.stderr.on('data', (c) => { ytdlpStderr += c.toString(); });
+// 	ffmpegProcess.stderr.on('data', (c) => { ffmpegStderr += c.toString(); });
+
+// 	const failIfNoHeaders = (source, message) => {
+// 		console.error(`${source} failed for ${req.params.id}:`, message);
+// 		if (!headersSent && !res.headersSent) {
+// 			res.status(502).json({ error: "Failed to extract audio, try again" });
+// 		}
+// 	};
+
+// 	ytdlp.on('exit', (code) => {
+// 		if (code !== 0) failIfNoHeaders('yt-dlp', ytdlpStderr);
+// 	});
+// 	ffmpegProcess.on('exit', (code) => {
+// 		if (code !== 0) failIfNoHeaders('ffmpeg', ffmpegStderr);
+// 	});
+// 	ytdlp.on('error', (err) => failIfNoHeaders('yt-dlp', err));
+// 	ffmpegProcess.on('error', (err) => failIfNoHeaders('ffmpeg', err));
+// });
+
+const fs = require('fs');
+const os = require('os');
+
 app.get("/extract/:id", async (req, res) => {
-	const url = `https://youtube.com/watch?v=${req.params.id}`;
+    const url = `https://youtube.com/watch?v=${req.params.id}`;
+    const rawTemplate = path.join(os.tmpdir(), `${req.params.id}-raw.%(ext)s`);
 
-	const ytdlp = youtubedl.exec(url, {
-		format: 'bestaudio/best',
-		output: '-',
-		cookies: cookiesPath,
-		extractorArgs: 'youtube:player-client=web,android',
-		jsRuntimes: `deno:${jsRuntimePath}`,
-		remoteComponents: 'ejs:github'
-	});
+    try {
+        await youtubedl(url, {
+            format: 'bestaudio/best',
+            output: rawTemplate,
+            cookies: cookiesPath,
+            extractorArgs: 'youtube:player-client=web,android',
+            jsRuntimes: `deno:${jsRuntimePath}`,
+            remoteComponents: 'ejs:github'
+        });
 
-	const ffmpegProcess = spawn(ffmpeg.path, [
-		'-i', 'pipe:0',
-		'-vn',
-		'-acodec', 'libmp3lame',
-		'-b:a', '128k',
-		'-f', 'mp3',
-		'pipe:1'
-	]);
+        const dir = os.tmpdir();
+        const match = fs.readdirSync(dir).find(f => f.startsWith(`${req.params.id}-raw.`));
+        if (!match) throw new Error("Downloaded file not found");
+        const rawPath = path.join(dir, match);
 
-	let headersSent = false;
+        const ffmpegProcess = spawn(ffmpeg.path, [
+            '-i', rawPath,
+            '-vn',
+            '-acodec', 'libmp3lame',
+            '-b:a', '128k',
+            '-f', 'mp3',
+            'pipe:1'
+        ]);
 
-	ytdlp.stdout.pipe(ffmpegProcess.stdin);
+        res.setHeader('Content-Type', 'audio/mpeg');
+        ffmpegProcess.stdout.pipe(res);
 
-	ffmpegProcess.stdout.once('data', () => {
-		if (!headersSent) {
-			res.setHeader('Content-Type', 'audio/mpeg');
-			headersSent = true;
-		}
-	});
-	ffmpegProcess.stdout.pipe(res);
+        let ffmpegStderr = '';
+        ffmpegProcess.stderr.on('data', c => { ffmpegStderr += c.toString(); });
 
-	let ytdlpStderr = '';
-	let ffmpegStderr = '';
-	ytdlp.stderr.on('data', (c) => { ytdlpStderr += c.toString(); });
-	ffmpegProcess.stderr.on('data', (c) => { ffmpegStderr += c.toString(); });
-
-	const failIfNoHeaders = (source, message) => {
-		console.error(`${source} failed for ${req.params.id}:`, message);
-		if (!headersSent && !res.headersSent) {
-			res.status(502).json({ error: "Failed to extract audio, try again" });
-		}
-	};
-
-	ytdlp.on('exit', (code) => {
-		if (code !== 0) failIfNoHeaders('yt-dlp', ytdlpStderr);
-	});
-	ffmpegProcess.on('exit', (code) => {
-		if (code !== 0) failIfNoHeaders('ffmpeg', ffmpegStderr);
-	});
-	ytdlp.on('error', (err) => failIfNoHeaders('yt-dlp', err));
-	ffmpegProcess.on('error', (err) => failIfNoHeaders('ffmpeg', err));
+        ffmpegProcess.on('exit', (code) => {
+            fs.unlink(rawPath, () => {});
+            if (code !== 0 && !res.headersSent) {
+                console.error(`ffmpeg failed for ${req.params.id}:`, ffmpegStderr);
+                res.status(502).json({ error: "Failed to extract audio, try again" });
+            }
+        });
+        ffmpegProcess.on('error', (err) => {
+            fs.unlink(rawPath, () => {});
+            if (!res.headersSent) {
+                console.error(`ffmpeg spawn error for ${req.params.id}:`, err);
+                res.status(502).json({ error: "Failed to extract audio, try again" });
+            }
+        });
+    } catch (error) {
+        console.error(`Extract Error for ${req.params.id}:`, error);
+        if (!res.headersSent) {
+            res.status(502).json({ error: "Failed to extract audio, try again" });
+        }
+    }
 });
-
 
 app.listen(8080, () => {
 	console.log("App listening on port 8080")
